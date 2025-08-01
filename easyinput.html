@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>Fahrzeitrechner Textformat</title>
+  <title>Eisenbahn Fahrzeitrechner (Textformat)</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -10,7 +10,7 @@
       margin: auto;
       padding: 20px;
     }
-    input, textarea {
+    textarea, input {
       width: 100%;
       padding: 10px;
       margin-bottom: 10px;
@@ -26,79 +26,122 @@
   </style>
 </head>
 <body>
-  <h1>Fahrzeitrechner</h1>
+  <h1>Fahrzeitrechner (Textformat)</h1>
 
-  <label>Startbahnhof:</label>
-  <input type="text" id="start" value="Oslo S">
-
-  <label>Streckenabschnitte:</label>
-  <textarea id="abschnitte" rows="6">0.7km 40km/h
+  <label for="eingabe">Eingabe (Start, Abschnitte, Ziel):</label>
+  <textarea id="eingabe" rows="8">Oslo S
+0.7km 40km/h
 2.75km 110km/h
 12.51km 210km/h
-1.44km 160km/h</textarea>
+1.44km 160km/h
+Lillestrøm</textarea>
 
-  <label>Zielbahnhof:</label>
-  <input type="text" id="ziel" value="Lillestrøm">
-
-  <label>Beschleunigung (m/s²):</label>
+  <label for="beschleunigung">Beschleunigung (m/s²):</label>
   <input type="number" id="beschleunigung" value="0.75">
 
-  <label>Verzögerung (m/s²):</label>
+  <label for="verzoegerung">Verzögerung (m/s²):</label>
   <input type="number" id="verzoegerung" value="1">
 
-  <button onclick="berechne()">Berechnen</button>
+  <button onclick="verarbeiten()">Berechnen</button>
 
   <div id="result"></div>
 
   <script>
     function berechneGesamtzeit(v0, vmax, vf, a_acc, a_dec, s_total) {
       const t1 = (vmax - v0) / a_acc;
-      const s1 = v0 * t1 + 0.5 * a_acc * t1 * t1;
+      const s1 = v0 * t1 + 0.5 * a_acc * Math.pow(t1, 2);
 
       const t3 = (vmax - vf) / a_dec;
-      const s3 = vf * t3 + 0.5 * a_dec * t3 * t3;
+      const s3 = vf * t3 + 0.5 * a_dec * Math.pow(t3, 2);
 
-      if (s1 + s3 > s_total) {
+      const s_beschleunigung_und_bremsen = s1 + s3;
+
+      if (s_total < s_beschleunigung_und_bremsen) {
         const a_eff = (a_acc * a_dec) / (a_acc + a_dec);
-        const vmax_eff = Math.sqrt(Math.max(0, v0 * v0 + 2 * a_eff * s_total));
+        const unter_wurzel = Math.pow(v0, 2) + 2 * a_eff * s_total;
+
+        if (unter_wurzel < 0) {
+          throw new Error("Unmögliche Bewegung mit den gegebenen Parametern.");
+        }
+
+        const vmax_eff = Math.sqrt(unter_wurzel);
+
         const t1_eff = vmax_eff > v0 ? (vmax_eff - v0) / a_acc : 0;
         const t3_eff = vmax_eff > vf ? (vmax_eff - vf) / a_dec : 0;
+
         return t1_eff + t3_eff;
       } else {
         const s2 = s_total - s1 - s3;
         const t2 = s2 > 0 ? s2 / vmax : 0;
+
         return t1 + t2 + t3;
       }
     }
 
-    function berechne() {
-      const start = document.getElementById("start").value;
-      const ziel = document.getElementById("ziel").value;
-      const text = document.getElementById("abschnitte").value.trim();
-      const a = parseFloat(document.getElementById("beschleunigung").value);
-      const d = parseFloat(document.getElementById("verzoegerung").value);
+    function berechneMehrereAbschnitte(a_acc, a_dec, vmax_list, strecken_list) {
+      if (vmax_list.length !== strecken_list.length) {
+        throw new Error("Die Listen für Höchstgeschwindigkeiten und Strecken müssen gleich lang sein.");
+      }
 
-      const lines = text.split("\n");
-      let v0 = 0;
       let gesamtzeit = 0;
+      let v0 = 0;
+      let vf = 0;
 
-      for (let i = 0; i < lines.length; i++) {
-        const match = lines[i].match(/([\d.]+)\s*km\s+([\d.]+)\s*km\/h/i);
-        if (!match) continue;
+      for (let i = 0; i < vmax_list.length; i++) {
+        const vmax = vmax_list[i];
 
-        const s = parseFloat(match[1]) * 1000;
-        const vmax = parseFloat(match[2]) / 3.6;
-        const vf = (i < lines.length - 1)
-          ? Math.min(parseFloat(lines[i + 1].match(/([\d.]+)\s*km\s+([\d.]+)\s*km\/h/)[2]) / 3.6, vmax)
-          : 0;
+        if (i < vmax_list.length - 1) {
+          vf = Math.min(vmax_list[i + 1], vmax);
+        } else {
+          vf = 0;
+        }
 
-        const t = berechneGesamtzeit(v0, vmax, vf, a, d);
-        gesamtzeit += t;
+        const s = strecken_list[i];
+
+        const zeit_abschnitt = berechneGesamtzeit(v0 / 3.6, vmax / 3.6, vf / 3.6, a_acc, a_dec, s * 1000);
+        gesamtzeit += zeit_abschnitt;
+
         v0 = vf;
       }
 
-      const minuten = gesamtzeit / 60;
-      document.getElementById("result").innerText = `${start} - ${ziel}: ${minuten.toFixed(2)} min`;
+      return gesamtzeit / 60;
+    }
+
+    function verarbeiten() {
+      const eingabe = document.getElementById("eingabe").value.trim().split("\n").map(s => s.trim()).filter(s => s.length > 0);
+      const beschleunigung = parseFloat(document.getElementById("beschleunigung").value);
+      const verzoegerung = parseFloat(document.getElementById("verzoegerung").value);
+
+      if (eingabe.length < 3) {
+        document.getElementById("result").innerText = "Bitte mindestens Start, einen Abschnitt und Ziel eingeben.";
+        return;
+      }
+
+      const start = eingabe[0];
+      const ziel = eingabe[eingabe.length - 1];
+      const abschnitte = eingabe.slice(1, -1);
+
+      const streckenList = [];
+      const vmaxList = [];
+
+      for (let zeile of abschnitte) {
+        const match = zeile.match(/([\d.]+)\s*km\s+([\d.]+)\s*km\/h/i);
+        if (!match) {
+          document.getElementById("result").innerText = `Ungültige Zeile: "${zeile}"`;
+          return;
+        }
+        streckenList.push(parseFloat(match[1]));
+        vmaxList.push(parseFloat(match[2]));
+      }
+
+      try {
+        const gesamtzeit = berechneMehrereAbschnitte(beschleunigung, verzoegerung, vmaxList, streckenList);
+        const reserve = gesamtzeit * 1.08;
+        document.getElementById("result").innerText =
+          `${start} - ${ziel}: ${gesamtzeit.toFixed(2)} min (${reserve.toFixed(2)} min mit 8 % Reserve)`;
+      } catch (error) {
+        document.getElementById("result").innerText = `Fehler: ${error.message}`;
+      }
     }
   </script>
 </body>
