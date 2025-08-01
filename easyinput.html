@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Fahrzeitrechner Textformat</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: auto;
+      padding: 20px;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    button {
+      padding: 10px 20px;
+      cursor: pointer;
+    }
+    #result {
+      margin-top: 15px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Fahrzeitrechner</h1>
+
+  <label>Startbahnhof:</label>
+  <input type="text" id="start" value="Oslo S">
+
+  <label>Streckenabschnitte:</label>
+  <textarea id="abschnitte" rows="6">0.7km 40km/h
+2.75km 110km/h
+12.51km 210km/h
+1.44km 160km/h</textarea>
+
+  <label>Zielbahnhof:</label>
+  <input type="text" id="ziel" value="Lillestrøm">
+
+  <label>Beschleunigung (m/s²):</label>
+  <input type="number" id="beschleunigung" value="0.75">
+
+  <label>Verzögerung (m/s²):</label>
+  <input type="number" id="verzoegerung" value="1">
+
+  <button onclick="berechne()">Berechnen</button>
+
+  <div id="result"></div>
+
+  <script>
+    function berechneGesamtzeit(v0, vmax, vf, a_acc, a_dec, s_total) {
+      const t1 = (vmax - v0) / a_acc;
+      const s1 = v0 * t1 + 0.5 * a_acc * t1 * t1;
+
+      const t3 = (vmax - vf) / a_dec;
+      const s3 = vf * t3 + 0.5 * a_dec * t3 * t3;
+
+      if (s1 + s3 > s_total) {
+        const a_eff = (a_acc * a_dec) / (a_acc + a_dec);
+        const vmax_eff = Math.sqrt(Math.max(0, v0 * v0 + 2 * a_eff * s_total));
+        const t1_eff = vmax_eff > v0 ? (vmax_eff - v0) / a_acc : 0;
+        const t3_eff = vmax_eff > vf ? (vmax_eff - vf) / a_dec : 0;
+        return t1_eff + t3_eff;
+      } else {
+        const s2 = s_total - s1 - s3;
+        const t2 = s2 > 0 ? s2 / vmax : 0;
+        return t1 + t2 + t3;
+      }
+    }
+
+    function berechne() {
+      const start = document.getElementById("start").value;
+      const ziel = document.getElementById("ziel").value;
+      const text = document.getElementById("abschnitte").value.trim();
+      const a = parseFloat(document.getElementById("beschleunigung").value);
+      const d = parseFloat(document.getElementById("verzoegerung").value);
+
+      const lines = text.split("\n");
+      let v0 = 0;
+      let gesamtzeit = 0;
+
+      for (let i = 0; i < lines.length; i++) {
+        const match = lines[i].match(/([\d.]+)\s*km\s+([\d.]+)\s*km\/h/i);
+        if (!match) continue;
+
+        const s = parseFloat(match[1]) * 1000;
+        const vmax = parseFloat(match[2]) / 3.6;
+        const vf = (i < lines.length - 1)
+          ? Math.min(parseFloat(lines[i + 1].match(/([\d.]+)\s*km\s+([\d.]+)\s*km\/h/)[2]) / 3.6, vmax)
+          : 0;
+
+        const t = berechneGesamtzeit(v0, vmax, vf, a, d);
+        gesamtzeit += t;
+        v0 = vf;
+      }
+
+      const minuten = gesamtzeit / 60;
+      document.getElementById("result").innerText = `${start} - ${ziel}: ${minuten.toFixed(2)} min`;
+    }
+  </script>
+</body>
+</html>
